@@ -1,0 +1,56 @@
+// See https://www.opendevstack.org/ods-documentation/ for usage and customization.
+
+@Library('ods-jenkins-shared-library@@ods_git_ref@') _
+
+def final envToQuarkusBuildMapping = [
+    'dev': 'jvm',
+    'test': 'native',
+    // 'prod': 'native'
+]
+
+odsComponentPipeline(
+  imageStreamTag: '@ods_namespace@/jenkins-agent-graalvm:@ods_image_tag@',
+  // a native build needs around 2Gi/4Gi memory, for a normal jvm build 1Gi/2Gi is enough 
+  resourceRequestMemory: "2Gi",
+  resourceLimitMemory: "4Gi",
+  branchToEnvironmentMapping: [
+    'master': 'dev',
+    // 'release/': 'test'
+  ]
+) { context ->
+  odsComponentStageImportOpenShiftImageOrElse(context) {
+    stageBuild(context, envToQuarkusBuildMapping)
+    odsComponentStageScanWithSonar(context)
+    odsComponentStageBuildOpenShiftImage(context)
+  }
+  odsComponentStageRolloutOpenShiftDeployment(context)
+}
+
+def stageBuild(def context, def envToQuarkusBuildMapping) {
+  def javaOpts = "-Xmx512m"
+  def gradleTestOpts = "-Xmx128m"
+  def environment = context.environment
+  if (environment.contains('-dev')) {
+    environment = 'dev'
+  }
+  // determine if native or jvm build
+  def nativeBuild = ''
+  if(envToQuarkusBuildMapping.containsKey(environment) && envToQuarkusBuildMapping[environment] == 'native') {
+    nativeBuild = '-Dquarkus.package.type=native'
+  }  
+  stage('Build and Unit Test') {
+    withEnv(["TAGVERSION=${context.tagversion}", "NEXUS_HOST=${context.nexusHost}", "NEXUS_USERNAME=${context.nexusUsername}", "NEXUS_PASSWORD=${context.nexusPassword}", "JAVA_OPTS=${javaOpts}","GRADLE_TEST_OPTS=${gradleTestOpts}","ENVIRONMENT=${environment}"]) {
+      def status = sh(script: "./gradlew clean build ${nativeBuild} --no-daemon --stacktrace", returnStatus: true)
+      junit 'docker/build/test-results/test/*.xml'
+      if (status != 0) {
+        error "Build failed!"
+      }
+      // rename generated Dockerfile.jvm/native to just Dockerfile so that OpenShift will pick it up
+      if(nativeBuild.length() > 0) {
+        sh "mv docker/Dockerfile.native docker/Dockerfile"
+      } else {
+        sh "mv docker/Dockerfile.jvm docker/Dockerfile"
+      }      
+    }
+  }
+}

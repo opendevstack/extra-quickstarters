@@ -1,0 +1,13 @@
+
+# change buildDir to docker/build, default was build
+buildDir=docker/build
+
+# set to true if not running in CI environment
+no_nexus=false
+
+# if running the gradle build behind a proxy set the values and comment out following properties
+#systemProp.http.proxyHost=
+#systemProp.http.proxyPort=
+#systemProp.https.proxyHost=
+#systemProp.https.proxyPort=
+#systemProp.https.nonProxyHosts=

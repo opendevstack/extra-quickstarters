@@ -1,0 +1,2 @@
+COPY build/*-runner /work/application
+RUN chown -R 1001:root /work/application

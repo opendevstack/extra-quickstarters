@@ -1,0 +1,80 @@
+def odsNamespace = env.ODS_NAMESPACE ?: 'ods'
+def odsGitRef = env.ODS_GIT_REF ?: 'master'
+def odsImageTag = env.ODS_IMAGE_TAG ?: 'latest'
+
+library("ods-jenkins-shared-library@${odsGitRef}")
+
+odsQuickstarterPipeline(
+    imageStreamTag: "${odsNamespace}/jenkins-slave-maven:${odsImageTag}",
+    // maven-slave selects the java version based on available memory, to ensure java11 we raise the requested memory
+    resourceLimitMemory: "2Gi",
+    resourceRequestMemory: "1Gi",
+) { context ->
+
+  stage('Build Quarkus project') {
+
+    // TODO: remove this once maven-slave uses maven wrapper (probably released with mvn version 3.7)
+    // install maven
+    def mavenVersion = "3.6.3"
+    def mavenBaseUrl = "https://apache.osuosl.org/maven/maven-3/${mavenVersion}/binaries"
+    sh """
+      mkdir -p /tmp/maven /tmp/maven/ref
+      curl -fsSL -o /tmp/apache-maven.tar.gz ${mavenBaseUrl}/apache-maven-${mavenVersion}-bin.tar.gz
+      tar -xzf /tmp/apache-maven.tar.gz -C /tmp/maven --strip-components=1
+      rm -f /tmp/apache-maven.tar.gz
+      ln -s /tmp/maven/bin/mvn /usr/bin/maven
+      maven --version     
+    """
+
+    // quarkus-maven-plugin creates the project folder and fails if this is already existing
+    sh "rm -r ${context.targetDir}"
+
+    // create quarkus project
+    // TODO: rename 'maven' to 'mvn' once the slaves's maven is used
+    def quarkusVersion = "1.6.0.Final"
+    sh "maven io.quarkus:quarkus-maven-plugin:${quarkusVersion}:create \
+        -DprojectGroupId=${context.projectId} \
+        -DprojectArtifactId=${context.componentId} \
+        -DclassName='${context.projectId}.getting.started.GreetingResource' \
+        -Dpath='/hello' \
+        -DbuildTool=gradle"
+
+    // add nexus credential settings to build.gradle
+    sh "cat ${context.sourceDir}/templates/gradle-buildscript.template ${context.targetDir}/build.gradle >out && mv out ${context.targetDir}/build.gradle"
+
+    // insert required plugins to build.gradle
+    sh "sed -i -e '/plugins {/{r ${context.sourceDir}/templates/gradle-plugins.template' -e 'd' -e '}' ${context.targetDir}/build.gradle"
+
+    // insert nexus repos to build.gradle
+    sh "sed -i -e '/mavenCentral()/{r ${context.sourceDir}/templates/gradle-repositories.template' -e 'd' -e '}' ${context.targetDir}/build.gradle"
+
+    // insert test settings to build.gradle
+    sh "sed -i -e '/test {/{r ${context.sourceDir}/templates/gradle-plugin-test.template' -e 'd' -e '}' ${context.targetDir}/build.gradle"
+
+    // append asciidoctor settings to build.gradle
+    sh "cat ${context.sourceDir}/templates/gradle-plugin-asciidoctor.template >> ${context.targetDir}/build.gradle"
+
+    // append jacoco settings to build.gradle
+    sh "cat ${context.sourceDir}/templates/gradle-plugin-jacoco.template >> ${context.targetDir}/build.gradle"
+
+    // append custom properties to gradle.properties
+    sh "cat ${context.sourceDir}/templates/gradle-properties.template >> ${context.targetDir}/gradle.properties"
+
+    // move docker dir to expected location
+    sh "mv ${context.targetDir}/src/main/docker ${context.targetDir}"
+
+    // for docker versions that can't handle '--chown' we replace a line in Dockerfile.native that uses it
+    sh "sed -i -e '/COPY --chown=1001:root build\\/\\*-runner \\/work\\/application/{r ${context.sourceDir}/templates/dockerfile-native-chown.template' -e 'd' -e '}' ${context.targetDir}/docker/Dockerfile.native"
+  }
+
+  odsQuickstarterStageCopyFiles(context)
+
+  odsQuickstarterStageCreateOpenShiftResources(
+      context,
+      [directory: 'common/ocp-config/component-environment']
+  )
+
+  odsQuickstarterStageRenderJenkinsfile(context)
+
+  odsQuickstarterStageRenderSonarProperties(context)
+}
