@@ -10,6 +10,5 @@ objects:
     labels:
       app: jenkins-agent-graalvm
   spec:
-    dockerImageRepository: jenkins-agent-graalvm
     lookupPolicy:
       local: false

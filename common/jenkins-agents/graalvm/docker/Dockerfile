@@ -1,4 +1,4 @@
-FROM opendevstackorg/ods-jenkins-slave-base-centos7:latest
+FROM opendevstackorg/ods-jenkins-agent-base-centos7:latest
 
 LABEL maintainer="Rene Dupont <rene.dupont@boehringer-ingelheim.com>"
 
@@ -9,7 +9,7 @@ LABEL com.redhat.component="jenkins-agent-graalvm-centos7-docker" \
       architecture="x86_64" \
       release="4" \
       io.k8s.display-name="Jenkins Agent GraalVM" \
-      io.k8s.description="The jenkins agent graalvm image uses GraalVM and has maven aswell as gradle on top of the jenkins slave base image." \
+      io.k8s.description="The jenkins agent graalvm image uses GraalVM and has maven as well as gradle on top of the jenkins agent base image." \
       io.openshift.tags="openshift,jenkins,agent,graalvm,maven,gradle"
 
 ARG nexusUrl
@@ -24,7 +24,7 @@ ENV MAVEN_VERSION=3.6.3 \
     GRADLE_USER_HOME=/home/jenkins/.gradle
 
 # Install GraalVM
-ARG GRAAL_VERSION=20.1.0
+ARG GRAAL_VERSION=20.2.0
 ARG GRAALVM_PKG=https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-$GRAAL_VERSION/graalvm-ce-java11-linux-amd64-$GRAAL_VERSION.tar.gz
 ENV GRAALVM_HOME=/opt/graalvm \
     JAVA_HOME=/opt/graalvm \    
@@ -74,7 +74,7 @@ ENV JAVA_TOOL_OPTIONS="-XX:+UnlockExperimentalVMOptions -Dsun.zip.disableMemoryM
 # looks for this variable and source the content of this file. This will enable
 # the SCL for all scripts without need to do 'scl enable'.
 ADD contrib/bin/scl_enable /usr/local/bin/scl_enable
-ADD contrib/bin/configure-slave /usr/local/bin/configure-slave
+ADD contrib/bin/configure-agent /usr/local/bin/configure-slave
 
 # set java proxy var
 COPY set_maven_proxy.sh /tmp/set_maven_proxy.sh
