@@ -2,8 +2,9 @@
 
 @Library('ods-jenkins-shared-library@@ods_git_ref@') _
 
-def final envToQuarkusBuildMapping = [
-    'dev': 'jvm',
+// possible quarkus package types are: jar, fast-jar and native.
+def final envToPackageTypeMapping = [
+    'dev': 'jar',
     'test': 'native',
     // 'prod': 'native'
 ]
@@ -13,44 +14,42 @@ odsComponentPipeline(
   // a native build needs around 2Gi/4Gi memory, for a normal jvm build 1Gi/2Gi is enough 
   resourceRequestMemory: "2Gi",
   resourceLimitMemory: "4Gi",
+  testResults: "docker/build/test-results/test",
   branchToEnvironmentMapping: [
     'master': 'dev',
     // 'release/': 'test'
   ]
 ) { context ->
   odsComponentStageImportOpenShiftImageOrElse(context) {
-    stageBuild(context, envToQuarkusBuildMapping)
+    stageBuild(context, envToPackageTypeMapping)
     odsComponentStageScanWithSonar(context)
     odsComponentStageBuildOpenShiftImage(context)
   }
   odsComponentStageRolloutOpenShiftDeployment(context)
 }
 
-def stageBuild(def context, def envToQuarkusBuildMapping) {
+def stageBuild(def context, def envToPackageTypeMapping) {
   def javaOpts = "-Xmx512m"
   def gradleTestOpts = "-Xmx128m"
   def environment = context.environment
   if (environment.contains('-dev')) {
     environment = 'dev'
   }
-  // determine if native or jvm build
-  def nativeBuild = ''
-  if(envToQuarkusBuildMapping.containsKey(environment) && envToQuarkusBuildMapping[environment] == 'native') {
-    nativeBuild = '-Dquarkus.package.type=native'
-  }  
+
+  // if no package type was chosen for the current environment, default to 'jar'
+  def packageType = envToPackageTypeMapping[environment] ?: 'jar'
+
   stage('Build and Unit Test') {
     withEnv(["TAGVERSION=${context.tagversion}", "NEXUS_HOST=${context.nexusHost}", "NEXUS_USERNAME=${context.nexusUsername}", "NEXUS_PASSWORD=${context.nexusPassword}", "JAVA_OPTS=${javaOpts}","GRADLE_TEST_OPTS=${gradleTestOpts}","ENVIRONMENT=${environment}"]) {
-      def status = sh(script: "./gradlew clean build ${nativeBuild} --no-daemon --stacktrace", returnStatus: true)
-      junit 'docker/build/test-results/test/*.xml'
+      def status = sh(script: "./gradlew clean build -Dquarkus.package.type=${packageType} --no-daemon --stacktrace", returnStatus: true)
       if (status != 0) {
         error "Build failed!"
       }
-      // rename generated Dockerfile.jvm/native to just Dockerfile so that OpenShift will pick it up
-      if(nativeBuild.length() > 0) {
-        sh "mv docker/Dockerfile.native docker/Dockerfile"
-      } else {
-        sh "mv docker/Dockerfile.jvm docker/Dockerfile"
-      }      
+      junit 'docker/build/test-results/test/*.xml'
+
+      // map package types to Dockerfile endings and rename the respective Dockerfile
+      def dockerfileRename = (packageType == 'jar') ? 'jvm' : packageType
+      sh "mv docker/Dockerfile.${dockerfileRename} docker/Dockerfile"
     }
   }
 }

@@ -9,7 +9,6 @@ odsQuickstarterPipeline(
 ) { context ->
 
   stage('Build Quarkus project') {
-
     // quarkus-maven-plugin creates the project folder and fails if this is already existing
     sh "rm -r ${context.targetDir}"
 
@@ -46,8 +45,19 @@ odsQuickstarterPipeline(
     // move docker dir to expected location
     sh "mv ${context.targetDir}/src/main/docker ${context.targetDir}"
 
-    // for docker versions that can't handle '--chown' we replace a line in Dockerfile.native that uses it
+    /*
+     * ToDo:
+     * The docker version in OpenShift 3.11 can't handle the '--chown' flag, thus we replace it in
+     * the Dockerfiles where it is has been used. Please check with later OpenShift versions if it is
+     * capable and remove the following if possible.
+     */
+    // replace '--chown' in Dockerfile.native
     sh "sed -i -e '/COPY --chown=1001:root build\\/\\*-runner \\/work\\/application/{r ${context.sourceDir}/templates/dockerfile-native-chown.template' -e 'd' -e '}' ${context.targetDir}/docker/Dockerfile.native"
+    // replace '--chown' in Dockerfile.fast-jar
+    sh "sed -i -e '/COPY --chown=1001 build\\/quarkus-app\\/lib\\/ \\/deployments\\/lib\\//{r ${context.sourceDir}/templates/dockerfile-fastjar-lib-chown.template' -e 'd' -e '}' ${context.targetDir}/docker/Dockerfile.fast-jar"
+    sh "sed -i -e '/COPY --chown=1001 build\\/quarkus-app\\/\\*.jar \\/deployments\\//{r ${context.sourceDir}/templates/dockerfile-fastjar-jar-chown.template' -e 'd' -e '}' ${context.targetDir}/docker/Dockerfile.fast-jar"
+    sh "sed -i -e '/COPY --chown=1001 build\\/quarkus-app\\/app\\/ \\/deployments\\/app\\//{r ${context.sourceDir}/templates/dockerfile-fastjar-app-chown.template' -e 'd' -e '}' ${context.targetDir}/docker/Dockerfile.fast-jar"
+    sh "sed -i -e '/COPY --chown=1001 build\\/quarkus-app\\/quarkus\\/ \\/deployments\\/quarkus\\//{r ${context.sourceDir}/templates/dockerfile-fastjar-quarkus-chown.template' -e 'd' -e '}' ${context.targetDir}/docker/Dockerfile.fast-jar"
   }
 
   odsQuickstarterStageCopyFiles(context)
