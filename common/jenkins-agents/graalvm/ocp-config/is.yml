@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Template
+metadata:
+  name: jenkins-agent-graalvm
+objects:
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    name: jenkins-agent-graalvm
+    labels:
+      app: jenkins-agent-graalvm
+  spec:
+    lookupPolicy:
+      local: false

@@ -1,0 +1,2 @@
+COPY build/quarkus-app/lib/ /deployments/lib/
+RUN chown -R 1001 /deployments/lib/

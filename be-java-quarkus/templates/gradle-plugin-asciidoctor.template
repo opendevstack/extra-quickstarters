@@ -1,0 +1,6 @@
+
+
+asciidoctor {
+    inputs.dir buildDir
+    dependsOn test
+}
